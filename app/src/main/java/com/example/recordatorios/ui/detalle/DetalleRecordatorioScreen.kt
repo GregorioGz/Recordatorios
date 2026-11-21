@@ -9,17 +9,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,24 +37,44 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.recordatorios.data.DatosSimulados
+import com.example.recordatorios.model.EstadoRecordatorio
+import com.example.recordatorios.model.EstadoSync
 import com.example.recordatorios.model.Recordatorio
 import com.example.recordatorios.ui.components.ColoresRecordatorio
 import com.example.recordatorios.ui.components.EstadoDeError
 import com.example.recordatorios.ui.components.EstadoDePantalla
 import com.example.recordatorios.ui.components.EtiquetaPrioridad
 import com.example.recordatorios.ui.components.IndicadorDeCarga
+import com.example.recordatorios.ui.components.IndicadorSync
+import com.example.recordatorios.ui.components.SelectorDeOpciones
+import com.example.recordatorios.ui.components.formatearFecha
 import com.example.recordatorios.ui.theme.RecordatoriosTheme
 
 @Composable
 fun DetalleRecordatorioRoute(
     onVolver: () -> Unit,
+    onEditar: (String) -> Unit,
+    onEliminado: () -> Unit,
     viewModel: DetalleRecordatorioViewModel = viewModel(factory = DetalleRecordatorioViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Después de eliminar se vuelve al listado (una sola vez)
+    LaunchedEffect(uiState) {
+        if (uiState is DetalleRecordatorioUiState.Eliminado) onEliminado()
+    }
+
     DetalleRecordatorioScreen(
         uiState = uiState,
         onVolver = onVolver,
-        onReintentar = viewModel::onReintentar
+        onReintentar = viewModel::onReintentar,
+        onEditar = onEditar,
+        onEliminarClick = viewModel::onEliminarClick,
+        onConfirmarEliminacion = viewModel::onConfirmarEliminacion,
+        onCancelarEliminacion = viewModel::onCancelarEliminacion,
+        onEstadoSeleccionado = viewModel::onEstadoSeleccionado,
+        onReintentarSincronizacion = viewModel::onReintentarSincronizacion,
+        onMensajeMostrado = viewModel::onMensajeMostrado
     )
 }
 
@@ -54,16 +84,43 @@ fun DetalleRecordatorioScreen(
     uiState: DetalleRecordatorioUiState,
     onVolver: () -> Unit,
     onReintentar: () -> Unit,
+    onEditar: (String) -> Unit,
+    onEliminarClick: () -> Unit,
+    onConfirmarEliminacion: () -> Unit,
+    onCancelarEliminacion: () -> Unit,
+    onEstadoSeleccionado: (EstadoRecordatorio) -> Unit,
+    onReintentarSincronizacion: () -> Unit,
+    onMensajeMostrado: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val mensaje = (uiState as? DetalleRecordatorioUiState.Encontrado)?.mensaje
+    LaunchedEffect(mensaje) {
+        if (mensaje != null) {
+            snackbarHostState.showSnackbar(mensaje)
+            onMensajeMostrado()
+        }
+    }
+
     Scaffold(
         modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Detalle") },
                 navigationIcon = {
                     IconButton(onClick = onVolver) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                actions = {
+                    if (uiState is DetalleRecordatorioUiState.Encontrado) {
+                        IconButton(onClick = { onEditar(uiState.recordatorio.id) }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Editar")
+                        }
+                        IconButton(onClick = onEliminarClick) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Eliminar")
+                        }
                     }
                 }
             )
@@ -74,7 +131,7 @@ fun DetalleRecordatorioScreen(
             .padding(innerPadding)
 
         when (uiState) {
-            DetalleRecordatorioUiState.Cargando ->
+            DetalleRecordatorioUiState.Cargando, DetalleRecordatorioUiState.Eliminado ->
                 IndicadorDeCarga(modifier = contenidoModifier)
 
             is DetalleRecordatorioUiState.Error ->
@@ -90,8 +147,29 @@ fun DetalleRecordatorioScreen(
                     modifier = contenidoModifier
                 )
 
-            is DetalleRecordatorioUiState.Encontrado ->
-                DetalleContenido(recordatorio = uiState.recordatorio, modifier = contenidoModifier)
+            is DetalleRecordatorioUiState.Encontrado -> {
+                DetalleContenido(
+                    recordatorio = uiState.recordatorio,
+                    onEstadoSeleccionado = onEstadoSeleccionado,
+                    onReintentarSincronizacion = onReintentarSincronizacion,
+                    modifier = contenidoModifier
+                )
+                if (uiState.confirmandoEliminacion) {
+                    AlertDialog(
+                        onDismissRequest = onCancelarEliminacion,
+                        title = { Text("¿Eliminar recordatorio?") },
+                        text = {
+                            Text("Se eliminará \"${uiState.recordatorio.titulo}\". Esta acción no se puede deshacer.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = onConfirmarEliminacion) { Text("Eliminar") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = onCancelarEliminacion) { Text("Cancelar") }
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -99,6 +177,8 @@ fun DetalleRecordatorioScreen(
 @Composable
 private fun DetalleContenido(
     recordatorio: Recordatorio,
+    onEstadoSeleccionado: (EstadoRecordatorio) -> Unit,
+    onReintentarSincronizacion: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -113,6 +193,22 @@ private fun DetalleContenido(
             fontWeight = FontWeight.SemiBold
         )
         EtiquetaPrioridad(recordatorio.prioridad)
+
+        // Cambio rápido de estado (se guarda en Room y queda pendiente de sincronizar)
+        SelectorDeOpciones(
+            titulo = "Estado",
+            opciones = EstadoRecordatorio.todos,
+            seleccionada = recordatorio.estado,
+            etiquetaDe = { it.etiqueta },
+            onSeleccion = onEstadoSeleccionado,
+            mensajeError = null
+        )
+
+        TarjetaSincronizacion(
+            estadoSync = recordatorio.estadoSync,
+            errorSync = recordatorio.errorSync,
+            onReintentar = onReintentarSincronizacion
+        )
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -135,7 +231,44 @@ private fun DetalleContenido(
                     FilaDato("Aviso", "⏰ $it minutos antes")
                 }
                 HorizontalDivider()
-                FilaDato("Identificador", "#${recordatorio.id}")
+                FilaDato("Creado", formatearFecha(recordatorio.fechaCreacion))
+                HorizontalDivider()
+                FilaDato("Última modificación", formatearFecha(recordatorio.fechaActualizacion))
+                HorizontalDivider()
+                FilaDato("Identificador", recordatorio.id)
+            }
+        }
+    }
+}
+
+/** Estado de sincronización del recordatorio, con su último error y la opción de reintentar. */
+@Composable
+private fun TarjetaSincronizacion(
+    estadoSync: EstadoSync,
+    errorSync: String?,
+    onReintentar: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val conError = estadoSync == EstadoSync.ERROR
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = if (conError) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        else CardDefaults.cardColors()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "Sincronización",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            IndicadorSync(estadoSync)
+            if (errorSync != null) {
+                Text(errorSync, style = MaterialTheme.typography.bodySmall)
+            }
+            if (estadoSync.estaPendiente) {
+                OutlinedButton(onClick = onReintentar) {
+                    Text(if (conError) "Reintentar sincronización" else "Sincronizar ahora")
+                }
             }
         }
     }
@@ -158,8 +291,15 @@ private fun FilaDato(etiqueta: String, valor: String, modifier: Modifier = Modif
 private fun DetallePreview() {
     RecordatoriosTheme {
         DetalleRecordatorioScreen(
-            uiState = DetalleRecordatorioUiState.Encontrado(DatosSimulados.recordatorios.first()),
-            onVolver = {}, onReintentar = {}
+            uiState = DetalleRecordatorioUiState.Encontrado(
+                DatosSimulados.recordatorios.first().copy(
+                    estadoSync = EstadoSync.ERROR,
+                    errorSync = "El servidor tuvo un problema. Los cambios quedan guardados; reintentá más tarde."
+                )
+            ),
+            onVolver = {}, onReintentar = {}, onEditar = {}, onEliminarClick = {},
+            onConfirmarEliminacion = {}, onCancelarEliminacion = {}, onEstadoSeleccionado = {},
+            onReintentarSincronizacion = {}, onMensajeMostrado = {}
         )
     }
 }

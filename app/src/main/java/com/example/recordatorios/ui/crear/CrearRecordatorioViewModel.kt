@@ -1,7 +1,9 @@
 package com.example.recordatorios.ui.crear
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -9,29 +11,76 @@ import com.example.recordatorios.AppContainer
 import com.example.recordatorios.data.RecordatoriosRepository
 import com.example.recordatorios.model.BorradorRecordatorio
 import com.example.recordatorios.model.Categoria
+import com.example.recordatorios.model.EstadoRecordatorio
 import com.example.recordatorios.model.Prioridad
 import com.example.recordatorios.model.Validador
+import com.example.recordatorios.navigation.Rutas
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel del formulario: recibe eventos, aplica las validaciones y
- * actualiza el estado con nuevas instancias inmutables (update + copy).
+ * ViewModel del formulario (crear y editar): recibe eventos, aplica las
+ * validaciones y actualiza el estado con nuevas instancias inmutables (update + copy).
+ * Si la ruta trae un recordatorioId (ruta "editar/{id}"), trabaja en modo edición.
  */
 class CrearRecordatorioViewModel(
+    savedStateHandle: SavedStateHandle,
     private val repositorio: RecordatoriosRepository
 ) : ViewModel() {
+
+    /** null = crear; con valor = editar ese recordatorio. */
+    private val idEnEdicion: String? = savedStateHandle.get<String>(Rutas.ARG_RECORDATORIO_ID)
 
     private val categoriasValidas = repositorio.categoriasDisponibles()
 
     private val _uiState = MutableStateFlow(
-        CrearRecordatorioUiState(categoriasDisponibles = categoriasValidas.toList())
+        CrearRecordatorioUiState(
+            modoEdicion = idEnEdicion != null,
+            cargandoDatos = idEnEdicion != null,
+            categoriasDisponibles = categoriasValidas.toList()
+        )
     )
     val uiState: StateFlow<CrearRecordatorioUiState> = _uiState.asStateFlow()
+
+    init {
+        idEnEdicion?.let { cargarParaEditar(it) }
+    }
+
+    /** Lee UNA vez el registro desde Room y completa el formulario. */
+    private fun cargarParaEditar(id: String) {
+        viewModelScope.launch {
+            val recordatorio = try {
+                repositorio.observarRecordatorio(id).first()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            _uiState.update { actual ->
+                if (recordatorio == null) {
+                    actual.copy(cargandoDatos = false, noEncontrado = true)
+                } else {
+                    validar(
+                        actual.copy(
+                            cargandoDatos = false,
+                            titulo = recordatorio.titulo,
+                            descripcion = recordatorio.descripcion.orEmpty(),
+                            categoriaSeleccionada = recordatorio.categoria,
+                            prioridadSeleccionada = recordatorio.prioridad,
+                            estadoSeleccionado = recordatorio.estado,
+                            // Los datos guardados ya se muestran validados
+                            camposTocados = Campo.entries.toSet()
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     // ---------- Eventos de la interfaz ----------
     fun onTituloCambiado(titulo: String) = actualizar(Campo.TITULO) { it.copy(titulo = titulo) }
@@ -45,11 +94,14 @@ class CrearRecordatorioViewModel(
     fun onPrioridadSeleccionada(prioridad: Prioridad) =
         actualizar(Campo.PRIORIDAD) { it.copy(prioridadSeleccionada = prioridad) }
 
+    fun onEstadoSeleccionado(estado: EstadoRecordatorio) =
+        _uiState.update { if (it.enviando) it else it.copy(estadoSeleccionado = estado) }
+
     fun onGuardar() {
         // Al intentar guardar se muestran los errores de TODOS los campos
         _uiState.update { validar(it.copy(camposTocados = Campo.entries.toSet())) }
         val estado = _uiState.value
-        if (!estado.formularioValido || estado.enviando) return
+        if (!estado.puedeGuardar) return
 
         val categoria = estado.categoriaSeleccionada ?: return
         val prioridad = estado.prioridadSeleccionada ?: return
@@ -57,14 +109,20 @@ class CrearRecordatorioViewModel(
             titulo = estado.titulo.trim(),
             descripcion = estado.descripcion.trim().ifBlank { null },
             categoria = categoria,
-            prioridad = prioridad
+            prioridad = prioridad,
+            estado = estado.estadoSeleccionado
         )
 
         viewModelScope.launch {
             _uiState.update { it.copy(envio = EstadoEnvio.Enviando) }
             val resultado = try {
-                val creado = repositorio.guardar(borrador)
-                EstadoEnvio.Exito(creado.id)
+                // Se guarda en Room (local-first); la sincronización ocurre después, en segundo plano
+                val guardado = if (idEnEdicion != null) {
+                    repositorio.actualizar(idEnEdicion, borrador)
+                } else {
+                    repositorio.crear(borrador)
+                }
+                EstadoEnvio.Exito(guardado.id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -109,7 +167,7 @@ class CrearRecordatorioViewModel(
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer { CrearRecordatorioViewModel(AppContainer.repositorio) }
+            initializer { CrearRecordatorioViewModel(createSavedStateHandle(), AppContainer.repositorio) }
         }
     }
 }

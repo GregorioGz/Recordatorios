@@ -86,6 +86,8 @@ fun RecordatorioCard(
                         }
                     )
                 }
+                // Estado de sincronización con el servidor (ícono + texto)
+                IndicadorSync(recordatorio.estadoSync)
             }
         }
     }

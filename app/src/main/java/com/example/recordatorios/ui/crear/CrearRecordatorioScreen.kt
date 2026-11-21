@@ -41,9 +41,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.recordatorios.data.DatosSimulados
 import com.example.recordatorios.model.Categoria
+import com.example.recordatorios.model.EstadoRecordatorio
 import com.example.recordatorios.model.Prioridad
 import com.example.recordatorios.model.Validador
 import com.example.recordatorios.ui.components.CampoDeTexto
+import com.example.recordatorios.ui.components.EstadoDePantalla
+import com.example.recordatorios.ui.components.IndicadorDeCarga
 import com.example.recordatorios.ui.components.SelectorDeOpciones
 import com.example.recordatorios.ui.theme.RecordatoriosTheme
 
@@ -67,6 +70,7 @@ fun CrearRecordatorioRoute(
         onDescripcionCambiada = viewModel::onDescripcionCambiada,
         onCategoriaSeleccionada = viewModel::onCategoriaSeleccionada,
         onPrioridadSeleccionada = viewModel::onPrioridadSeleccionada,
+        onEstadoSeleccionado = viewModel::onEstadoSeleccionado,
         onGuardar = viewModel::onGuardar,
         onReintentar = viewModel::onReintentarGuardado,
         onDescartarError = viewModel::onErrorDescartado,
@@ -82,6 +86,7 @@ fun CrearRecordatorioScreen(
     onDescripcionCambiada: (String) -> Unit,
     onCategoriaSeleccionada: (Categoria) -> Unit,
     onPrioridadSeleccionada: (Prioridad) -> Unit,
+    onEstadoSeleccionado: (EstadoRecordatorio) -> Unit,
     onGuardar: () -> Unit,
     onReintentar: () -> Unit,
     onDescartarError: () -> Unit,
@@ -94,7 +99,7 @@ fun CrearRecordatorioScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Nuevo recordatorio") },
+                title = { Text(if (uiState.modoEdicion) "Editar recordatorio" else "Nuevo recordatorio") },
                 navigationIcon = {
                     IconButton(onClick = onCancelar) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancelar y volver")
@@ -103,6 +108,23 @@ fun CrearRecordatorioScreen(
             )
         }
     ) { innerPadding ->
+        // Modo edición: mientras se lee el registro de Room, o si ya no existe
+        if (uiState.cargandoDatos) {
+            IndicadorDeCarga(modifier = Modifier.fillMaxSize().padding(innerPadding), mensaje = "Leyendo el recordatorio guardado")
+            return@Scaffold
+        }
+        if (uiState.noEncontrado) {
+            EstadoDePantalla(
+                titulo = "Recordatorio no encontrado",
+                mensaje = "El recordatorio que querías editar ya no existe.",
+                icono = "🔍",
+                textoAccion = "Volver",
+                onAccion = onCancelar,
+                modifier = Modifier.fillMaxSize().padding(innerPadding)
+            )
+            return@Scaffold
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -151,6 +173,19 @@ fun CrearRecordatorioScreen(
                 mensajeError = uiState.errorPrioridad,
                 enabled = habilitado
             )
+
+            // El estado solo se elige al editar (un recordatorio nuevo siempre empieza Pendiente)
+            if (uiState.modoEdicion) {
+                SelectorDeOpciones(
+                    titulo = "Estado",
+                    opciones = uiState.estadosDisponibles,
+                    seleccionada = uiState.estadoSeleccionado,
+                    etiquetaDe = { it.etiqueta },
+                    onSeleccion = onEstadoSeleccionado,
+                    mensajeError = null,
+                    enabled = habilitado
+                )
+            }
 
             // Error general de guardado, con opción de reintento
             val envio = uiState.envio
@@ -228,7 +263,7 @@ private fun CrearRecordatorioPreview() {
                 errorTitulo = "El título debe tener al menos 4 caracteres"
             ),
             onTituloCambiado = {}, onDescripcionCambiada = {}, onCategoriaSeleccionada = {},
-            onPrioridadSeleccionada = {}, onGuardar = {}, onReintentar = {},
+            onPrioridadSeleccionada = {}, onEstadoSeleccionado = {}, onGuardar = {}, onReintentar = {},
             onDescartarError = {}, onCancelar = {}
         )
     }

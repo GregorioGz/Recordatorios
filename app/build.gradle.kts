@@ -1,7 +1,22 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
 }
+
+// Lectura compatible con configuration cache: el archivo queda registrado como entrada del build
+val urlBasePorDefecto = "https://api.recordatorios.example/"
+val apiBaseUrl: String = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+    .asText.orNull
+    ?.lineSequence()
+    ?.map { it.trim() }
+    ?.firstOrNull { it.startsWith("API_BASE_URL=") }
+    ?.substringAfter("=")
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?.let { if (it.endsWith("/")) it else "$it/" }
+    ?: urlBasePorDefecto
 
 android {
     namespace = "com.example.recordatorios"
@@ -17,6 +32,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // URL base del servicio remoto: se lee de local.properties (clave API_BASE_URL).
+        // Si no existe, se usa la URL de ejemplo, que activa el servidor simulado.
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     buildTypes {
@@ -33,6 +52,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -56,4 +76,14 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
