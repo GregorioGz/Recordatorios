@@ -1,9 +1,9 @@
 package com.example.recordatorios.model
 
 /**
- * Modelo de dominio de la app de recordatorios.
- * Todas las clases son inmutables (solo `val`) para evitar estados inválidos
- * modificados desde afuera. Para "cambiar" un recordatorio se usa copy().
+ * Modelo de dominio (se conserva de la Actividad 1).
+ * Todas las clases son inmutables (solo `val`): para "cambiar" un
+ * recordatorio se crea una copia con copy().
  */
 
 // ---------- Prioridad (sealed class) ----------
@@ -13,6 +13,7 @@ sealed class Prioridad(val etiqueta: String, val nivel: Int) {
     data object Baja : Prioridad("Baja", 1)
 
     companion object {
+        // get(): la lista se crea al pedirla (corrección del error de la Actividad 1)
         val todas: List<Prioridad> get() = listOf(Alta, Media, Baja)
     }
 }
@@ -29,14 +30,14 @@ sealed class EstadoRecordatorio(val etiqueta: String) {
 }
 
 // ---------- Categoría (data class inmutable) ----------
-// Al ser data class, dos categorías con el mismo id y nombre son "iguales",
+// Al ser data class, dos categorías con el mismo id y nombre son iguales,
 // por eso un Set<Categoria> descarta automáticamente las repetidas.
 data class Categoria(
     val id: Int,
     val nombre: String
 )
 
-// ---------- Datos opcionales del contexto ----------
+// ---------- Dato opcional de contexto ----------
 data class Ubicacion(
     val nombre: String,
     val latitud: Double,
@@ -51,29 +52,30 @@ data class Recordatorio(
     val prioridad: Prioridad,
     val estado: EstadoRecordatorio = EstadoRecordatorio.Pendiente,
     val descripcion: String? = null,      // opcional
-    val ubicacion: Ubicacion? = null,     // opcional (recordatorio por lugar)
-    val avisoMinutosAntes: Int? = null    // opcional (recordatorio por aviso)
+    val ubicacion: Ubicacion? = null,     // opcional (se usará en módulos posteriores)
+    val avisoMinutosAntes: Int? = null    // opcional (se usará en módulos posteriores)
 ) {
     // Regla de integridad: nunca puede existir un Recordatorio inválido.
     init {
-        require(titulo.isNotBlank()) { "El título no puede estar vacío" }
-        require(titulo.length <= 60) { "El título no puede superar 60 caracteres" }
+        require(titulo.trim().length >= Validador.MIN_TITULO) {
+            "El título debe tener al menos ${Validador.MIN_TITULO} caracteres"
+        }
+        require(titulo.length <= Validador.MAX_TITULO) {
+            "El título no puede superar ${Validador.MAX_TITULO} caracteres"
+        }
+        require((descripcion?.length ?: 0) <= Validador.MAX_DESCRIPCION) {
+            "La descripción no puede superar ${Validador.MAX_DESCRIPCION} caracteres"
+        }
         require(avisoMinutosAntes == null || avisoMinutosAntes > 0) {
             "El aviso debe ser mayor a 0 minutos"
         }
     }
 }
 
-// ---------- Resultado de validación (sealed class) ----------
-sealed class ResultadoValidacion {
-    data class Valido(val recordatorio: Recordatorio) : ResultadoValidacion()
-    data class Invalido(val errores: List<String>) : ResultadoValidacion()
-}
-
-// ---------- Estado de la pantalla (sealed interface) ----------
-sealed interface UiState {
-    data object Cargando : UiState
-    data object Vacio : UiState
-    data class Exito(val recordatorios: List<Recordatorio>) : UiState
-    data class Error(val mensaje: String) : UiState
-}
+/** Datos que la pantalla de creación entrega al repositorio (todavía sin id). */
+data class BorradorRecordatorio(
+    val titulo: String,
+    val descripcion: String?,
+    val categoria: Categoria,
+    val prioridad: Prioridad
+)

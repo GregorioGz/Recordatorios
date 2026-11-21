@@ -1,6 +1,5 @@
 package com.example.recordatorios.data
 
-import androidx.compose.ui.graphics.Color
 import com.example.recordatorios.model.Categoria
 import com.example.recordatorios.model.EstadoRecordatorio
 import com.example.recordatorios.model.Prioridad
@@ -8,28 +7,28 @@ import com.example.recordatorios.model.Recordatorio
 import com.example.recordatorios.model.Ubicacion
 
 /**
- * Datos simulados (sin persistencia ni red en esta etapa).
- * Uso de colecciones:
- *  - List  -> recordatorios (ordenados, admiten duplicados de categoría)
- *  - Set   -> categorías únicas (descarta repetidas)
- *  - Map   -> categoría -> color / etiqueta; prioridad -> color
+ * Datos de ejemplo con los que arranca el repositorio en memoria.
+ *  - List -> recordatorios iniciales
+ *  - Set  -> categorías definidas (sin repetidas)
  */
 object DatosSimulados {
 
-    private val trabajo = Categoria(1, "Trabajo")
-    private val estudio = Categoria(2, "Estudio")
-    private val salud = Categoria(3, "Salud")
-    private val hogar = Categoria(4, "Hogar")
+    val trabajo = Categoria(1, "Trabajo")
+    val estudio = Categoria(2, "Estudio")
+    val salud = Categoria(3, "Salud")
+    val hogar = Categoria(4, "Hogar")
 
-    // List inmutable de recordatorios simulados
+    // Set: las únicas categorías válidas del formulario
+    val categorias: Set<Categoria> = setOf(trabajo, estudio, salud, hogar)
+
     val recordatorios: List<Recordatorio> = listOf(
         Recordatorio(
             id = 1,
-            titulo = "Entregar Actividad 1",
+            titulo = "Entregar Actividad 2",
             categoria = estudio,
             prioridad = Prioridad.Alta,
             estado = EstadoRecordatorio.EnCurso,
-            descripcion = "Subir el PDF con capturas y enlace al repositorio",
+            descripcion = "Subir el PDF con capturas, tabla de rutas y descripción de la arquitectura",
             avisoMinutosAntes = 60
         ),
         Recordatorio(
@@ -37,6 +36,7 @@ object DatosSimulados {
             titulo = "Reunión de equipo",
             categoria = trabajo,
             prioridad = Prioridad.Media,
+            descripcion = "Revisar avances del sprint",
             ubicacion = Ubicacion("Oficina central", -34.6037, -58.3816)
         ),
         Recordatorio(
@@ -56,10 +56,10 @@ object DatosSimulados {
         ),
         Recordatorio(
             id = 5,
-            titulo = "Repasar Kotlin: sealed classes",
+            titulo = "Repasar Navigation Compose",
             categoria = estudio,
             prioridad = Prioridad.Media,
-            descripcion = "Capítulo de clases selladas e inmutabilidad"
+            descripcion = "NavHost, rutas con argumentos y popBackStack()"
         ),
         Recordatorio(
             id = 6,
@@ -67,53 +67,6 @@ object DatosSimulados {
             categoria = trabajo,
             prioridad = Prioridad.Alta,
             estado = EstadoRecordatorio.Completado
-        ),
-        Recordatorio(
-            id = 7,
-            titulo = "Salir a caminar",
-            categoria = salud,
-            prioridad = Prioridad.Baja
         )
     )
-
-    // Set: aunque varios recordatorios compartan categoría, el Set no repite
-    val categorias: Set<Categoria> = recordatorios.map { it.categoria }.toSet()
-
-    // Map: cada categoría asociada a un color
-    val colorPorCategoria: Map<Categoria, Color> = mapOf(
-        trabajo to Color(0xFF1E88E5),
-        estudio to Color(0xFF8E24AA),
-        salud to Color(0xFF43A047),
-        hogar to Color(0xFFFB8C00)
-    )
-
-    // Map: cada categoría asociada a una etiqueta corta (emoji)
-    val etiquetaPorCategoria: Map<Categoria, String> = mapOf(
-        trabajo to "💼",
-        estudio to "📚",
-        salud to "❤️",
-        hogar to "🏠"
-    )
-
-    // Map: color según prioridad
-    val colorPorPrioridad: Map<Prioridad, Color> = mapOf(
-        Prioridad.Alta to Color(0xFFE53935),
-        Prioridad.Media to Color(0xFFFDD835),
-        Prioridad.Baja to Color(0xFF7CB342)
-    )
-
-    // ---------- Filtros ----------
-    fun filtrarPorEstado(
-        lista: List<Recordatorio>,
-        estado: EstadoRecordatorio
-    ): List<Recordatorio> = lista.filter { it.estado == estado }
-
-    fun filtrarPorPrioridad(
-        lista: List<Recordatorio>,
-        prioridad: Prioridad
-    ): List<Recordatorio> = lista.filter { it.prioridad == prioridad }
-
-    // Map agrupado: estado -> lista de recordatorios (útil para contadores)
-    fun agruparPorEstado(lista: List<Recordatorio>): Map<EstadoRecordatorio, List<Recordatorio>> =
-        lista.groupBy { it.estado }
 }
