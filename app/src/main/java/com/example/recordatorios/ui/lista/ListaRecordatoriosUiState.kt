@@ -19,28 +19,36 @@ sealed interface ListaRecordatoriosUiState {
 /**
  * Estado de la barra de sincronización y del menú de pruebas (independiente del contenido).
  * - estado: conexión, sincronización en curso, pendientes y último error.
- * - escenarioServidorActivo: opción del servidor simulado marcada en el menú (null = servidor real).
  * - mensaje: aviso puntual para mostrar en un Snackbar.
  */
 data class SincronizacionUiState(
     val estado: EstadoSincronizacion = EstadoSincronizacion(),
-    val escenarioServidorActivo: Simulacion? = null,
-    val mensaje: String? = null
+    val mensaje: String? = null,
+    /** true solo en el flavor dev: muestra el menú ⋮ de pruebas. */
+    val herramientasDePrueba: Boolean = false,
+    /** Diálogo abierto para la prueba de acceso a otra cuenta (null = cerrado). */
+    val pruebaOtraCuenta: PruebaOtraCuentaUiState? = null,
+    /** Resultado de la última prueba (se muestra en un diálogo para poder capturarlo). */
+    val resultadoPrueba: String? = null
 )
 
-enum class GrupoSimulacion { DATOS_LOCALES, PREFERENCIAS, SERVIDOR }
+/** Prueba de autorización: se ingresa el uid de otra cuenta y se intenta leer o escribir. */
+data class PruebaOtraCuentaUiState(
+    val operacion: Simulacion,
+    val uid: String = "",
+    val ejecutando: Boolean = false
+)
 
-/** Escenarios que se pueden simular desde el menú ⋮ del listado (solo para pruebas). */
+enum class GrupoSimulacion { DATOS_LOCALES, PREFERENCIAS, NUBE, AUTORIZACION }
+
+/** Herramientas del menú ⋮ del listado (solo en el flavor dev). */
 enum class Simulacion(val etiqueta: String, val grupo: GrupoSimulacion) {
     LISTA_VACIA("Simular lista vacía", GrupoSimulacion.DATOS_LOCALES),
     ERROR_DE_CARGA("Simular error de lectura local", GrupoSimulacion.DATOS_LOCALES),
     ERROR_AL_GUARDAR("Simular error en el próximo guardado", GrupoSimulacion.DATOS_LOCALES),
-    RESTAURAR("Restaurar datos de ejemplo", GrupoSimulacion.DATOS_LOCALES),
+    CARGAR_EJEMPLOS("Cargar datos de ejemplo", GrupoSimulacion.DATOS_LOCALES),
     TEMA_INVALIDO("Guardar tema inválido (DataStore)", GrupoSimulacion.PREFERENCIAS),
-    SERVIDOR_NORMAL("Servidor: normal (200/201/204)", GrupoSimulacion.SERVIDOR),
-    SERVIDOR_ERROR_500("Servidor: error 500", GrupoSimulacion.SERVIDOR),
-    SERVIDOR_ERROR_400("Servidor: solicitud inválida 400", GrupoSimulacion.SERVIDOR),
-    SERVIDOR_TIMEOUT("Servidor: timeout", GrupoSimulacion.SERVIDOR),
-    SERVIDOR_SIN_CONEXION("Servidor: sin conexión", GrupoSimulacion.SERVIDOR),
-    SINCRONIZACION_CONCURRENTE("Probar 3 sincronizaciones simultáneas", GrupoSimulacion.SERVIDOR)
+    SINCRONIZACION_CONCURRENTE("Probar 3 sincronizaciones simultáneas", GrupoSimulacion.NUBE),
+    LEER_OTRA_CUENTA("Intentar leer datos de otra cuenta", GrupoSimulacion.AUTORIZACION),
+    ESCRIBIR_OTRA_CUENTA("Intentar escribir en otra cuenta", GrupoSimulacion.AUTORIZACION)
 }

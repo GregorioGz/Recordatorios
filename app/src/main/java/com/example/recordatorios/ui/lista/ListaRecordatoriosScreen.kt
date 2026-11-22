@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -72,7 +71,11 @@ fun ListaRecordatoriosRoute(
         onReintentar = viewModel::onReintentar,
         onSincronizarAhora = viewModel::onSincronizarAhora,
         onSimular = viewModel::onSimular,
-        onMensajeMostrado = viewModel::onMensajeMostrado
+        onMensajeMostrado = viewModel::onMensajeMostrado,
+        onUidOtraCuentaCambiado = viewModel::onUidOtraCuentaCambiado,
+        onEjecutarPruebaOtraCuenta = viewModel::onEjecutarPruebaOtraCuenta,
+        onCancelarPruebaOtraCuenta = viewModel::onCancelarPruebaOtraCuenta,
+        onResultadoPruebaCerrado = viewModel::onResultadoPruebaCerrado
     )
 }
 
@@ -89,8 +92,23 @@ fun ListaRecordatoriosScreen(
     onSincronizarAhora: () -> Unit,
     onSimular: (Simulacion) -> Unit,
     onMensajeMostrado: () -> Unit,
+    onUidOtraCuentaCambiado: (String) -> Unit,
+    onEjecutarPruebaOtraCuenta: () -> Unit,
+    onCancelarPruebaOtraCuenta: () -> Unit,
+    onResultadoPruebaCerrado: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    sincronizacion.pruebaOtraCuenta?.let { prueba ->
+        DialogoOtraCuenta(
+            prueba = prueba,
+            onUidCambiado = onUidOtraCuentaCambiado,
+            onEjecutar = onEjecutarPruebaOtraCuenta,
+            onCancelar = onCancelarPruebaOtraCuenta
+        )
+    }
+    sincronizacion.resultadoPrueba?.let { resultado ->
+        DialogoResultadoPrueba(resultado = resultado, onCerrar = onResultadoPruebaCerrado)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(sincronizacion.mensaje) {
         sincronizacion.mensaje?.let {
@@ -115,10 +133,10 @@ fun ListaRecordatoriosScreen(
                     IconButton(onClick = onAbrirAjustes) {
                         Icon(Icons.Filled.Settings, contentDescription = "Ajustes")
                     }
-                    MenuDePruebas(
-                        escenarioServidorActivo = sincronizacion.escenarioServidorActivo,
-                        onSimular = onSimular
-                    )
+                    // Herramientas de prueba: solo en el flavor dev (BuildConfig.HERRAMIENTAS_DE_PRUEBA)
+                    if (sincronizacion.herramientasDePrueba) {
+                        MenuDePruebas(onSimular = onSimular)
+                    }
                 }
             )
         },
@@ -179,10 +197,9 @@ fun ListaRecordatoriosScreen(
     }
 }
 
-/** Menú ⋮ SOLO PARA PRUEBAS: simulaciones locales, de preferencias y del servidor. */
+/** Menú ⋮ SOLO PARA PRUEBAS (flavor dev): simulaciones locales, sincronización y autorización. */
 @Composable
 private fun MenuDePruebas(
-    escenarioServidorActivo: Simulacion?,
     onSimular: (Simulacion) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -198,9 +215,6 @@ private fun MenuDePruebas(
                 }
                 DropdownMenuItem(
                     text = { Text(simulacion.etiqueta) },
-                    trailingIcon = if (simulacion == escenarioServidorActivo) {
-                        { Icon(Icons.Filled.Check, contentDescription = "Activo") }
-                    } else null,
                     onClick = {
                         menuAbierto = false
                         onSimular(simulacion)
@@ -240,7 +254,9 @@ private fun ListaPreview(uiState: ListaRecordatoriosUiState, estado: EstadoSincr
             uiState = uiState,
             sincronizacion = SincronizacionUiState(estado = estado),
             onCrearRecordatorio = {}, onRecordatorioClick = {}, onAbrirAjustes = {}, onReintentar = {},
-            onSincronizarAhora = {}, onSimular = {}, onMensajeMostrado = {}
+            onSincronizarAhora = {}, onSimular = {}, onMensajeMostrado = {},
+            onUidOtraCuentaCambiado = {}, onEjecutarPruebaOtraCuenta = {}, onCancelarPruebaOtraCuenta = {},
+            onResultadoPruebaCerrado = {}
         )
     }
 }

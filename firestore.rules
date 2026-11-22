@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// Reglas de seguridad de Cloud Firestore para la app Recordatorios.
+// Estructura: users/{uid}/reminders/{reminderId}
+// - Solo la cuenta dueña (request.auth.uid == uid) puede leer o escribir sus recordatorios.
+// - Cada escritura se valida en el servidor: la app no es el único control.
+// - Cualquier otra ruta queda denegada.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{uid}/reminders/{reminderId} {
+
+      function esDuenio() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      function datosValidos() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['id', 'titulo', 'descripcion', 'categoriaId', 'categoriaNombre',
+                                 'prioridad', 'estado', 'fechaCreacion', 'fechaActualizacion'])
+          && d.keys().hasAll(['id', 'titulo', 'categoriaId', 'categoriaNombre',
+                              'prioridad', 'estado', 'fechaCreacion', 'fechaActualizacion'])
+          && d.id == reminderId
+          && d.titulo is string && d.titulo.size() >= 4 && d.titulo.size() <= 60
+          && (!('descripcion' in d) || d.descripcion == null
+              || (d.descripcion is string && d.descripcion.size() <= 200))
+          && d.categoriaId is int
+          && d.categoriaNombre is string
+          && d.prioridad in ['ALTA', 'MEDIA', 'BAJA']
+          && d.estado in ['PENDIENTE', 'EN_CURSO', 'COMPLETADO']
+          && d.fechaCreacion is int
+          && d.fechaActualizacion is int;
+      }
+
+      allow read, delete: if esDuenio();
+      allow create, update: if esDuenio() && datosValidos();
+    }
+
+    // Todo lo demás queda denegado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

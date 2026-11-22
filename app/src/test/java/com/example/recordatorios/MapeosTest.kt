@@ -1,14 +1,14 @@
 package com.example.recordatorios
 
+import com.example.recordatorios.data.CamposFirestore
 import com.example.recordatorios.data.DatosSimulados
 import com.example.recordatorios.data.aDominio
-import com.example.recordatorios.data.aDto
 import com.example.recordatorios.data.aEntity
 import com.example.recordatorios.data.aEntityNueva
+import com.example.recordatorios.data.aMapaFirestore
 import com.example.recordatorios.data.conCambios
-import com.example.recordatorios.data.esValido
 import com.example.recordatorios.data.local.ConvertidoresRoom
-import com.example.recordatorios.data.remote.RecordatorioDto
+import com.example.recordatorios.data.remote.DocumentoRemoto
 import com.example.recordatorios.fakes.entidad
 import com.example.recordatorios.model.BorradorRecordatorio
 import com.example.recordatorios.model.EstadoRecordatorio
@@ -16,28 +16,25 @@ import com.example.recordatorios.model.EstadoSync
 import com.example.recordatorios.model.Prioridad
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Mapeos explícitos DTO <-> Entity <-> Dominio. */
+/** Mapeos explícitos Dominio <-> Entity <-> Map de Firestore. */
 class MapeosTest {
 
-    private val dtoValido = RecordatorioDto(
-        id = "id-1",
-        titulo = "Comprar pan",
-        descripcion = "Integral",
-        categoriaId = 4,
-        categoriaNombre = "Hogar",
-        prioridad = "BAJA",
-        estado = "EN_CURSO",
-        fechaCreacion = 10,
-        fechaActualizacion = 20
+    private val enviado = entidad("id-1", EstadoSync.PENDIENTE_CREAR, titulo = "Comprar pan").copy(
+        descripcion = "Integral", categoriaId = 4, categoriaNombre = "Hogar", prioridad = "BAJA",
+        estado = "EN_CURSO", fechaCreacion = 10, fechaActualizacion = 20
     )
+
+    private fun documento(cambios: Map<String, Any?> = emptyMap(), id: String = "id-1") =
+        DocumentoRemoto(id, enviado.aMapaFirestore() + cambios)
 
     @Test
     fun dominioAEntityYDeVueltaConservaTodosLosDatos() {
         DatosSimulados.recordatorios.forEach { original ->
-            assertEquals(original, original.aEntity().aDominio())
+            assertEquals(original, original.aEntity("yo").aDominio())
         }
     }
 
@@ -50,31 +47,50 @@ class MapeosTest {
     }
 
     @Test
-    fun dtoAEntityYDeVueltaConservaElContrato() {
-        val entity = dtoValido.aEntity()
-        assertEquals(EstadoSync.SINCRONIZADO, entity.estadoSync)
-        assertEquals(dtoValido, entity.aDto())
+    fun elMapaDeFirestoreTieneSoloLosCamposDelContrato() {
+        val mapa = enviado.aMapaFirestore()
+        assertEquals(
+            setOf("id", "titulo", "descripcion", "categoriaId", "categoriaNombre", "prioridad", "estado",
+                "fechaCreacion", "fechaActualizacion"),
+            mapa.keys
+        )
+        assertEquals("id-1", mapa[CamposFirestore.ID])
+        assertEquals(4L, mapa[CamposFirestore.CATEGORIA_ID])   // Firestore guarda enteros como Long
+        assertFalse("uidPropietario" in mapa)                     // el uid va en la ruta, no en el documento
+        assertFalse("estadoSync" in mapa)                         // dato solo local
     }
 
     @Test
-    fun dtoConClavesDesconocidasUsaValoresPredeterminados() {
-        val entity = dtoValido.copy(prioridad = "URGENTISIMA", estado = "ARCHIVADO").aEntity()
-        assertEquals(Prioridad.Media.clave, entity.prioridad)
-        assertEquals(EstadoRecordatorio.Pendiente.clave, entity.estado)
+    fun entityAMapaYDeVueltaConservaLosDatosYQuedaSincronizado() {
+        val recibido = documento().aEntity("yo")
+        assertEquals(enviado.copy(estadoSync = EstadoSync.SINCRONIZADO), recibido)
     }
 
     @Test
-    fun dtoInvalidoSeDescarta() {
-        assertTrue(dtoValido.esValido())
-        assertFalse(dtoValido.copy(titulo = "ab").esValido())
-        assertFalse(dtoValido.copy(id = " ").esValido())
+    fun losNumerosDeFirestoreSeAceptanComoLongODouble() {
+        val recibido = documento(mapOf("categoriaId" to 4.0, "fechaCreacion" to 10L)).aEntity("yo")
+        assertNotNull(recibido)
+        assertEquals(4, recibido!!.categoriaId)
     }
 
     @Test
-    fun borradorAEntityNuevaQuedaPendienteDeCrear() {
+    fun documentosInvalidosSeDescartan() {
+        assertNull(documento(mapOf("titulo" to "ab")).aEntity("yo"))                 // título corto
+        assertNull(documento(mapOf("titulo" to "x".repeat(61))).aEntity("yo"))      // título largo
+        assertNull(documento(mapOf("descripcion" to "x".repeat(201))).aEntity("yo"))
+        assertNull(documento(mapOf("descripcion" to 5)).aEntity("yo"))              // tipo incorrecto
+        assertNull(documento(mapOf("prioridad" to "URGENTISIMA")).aEntity("yo"))
+        assertNull(documento(mapOf("estado" to "ARCHIVADO")).aEntity("yo"))
+        assertNull(documento(mapOf("fechaCreacion" to null)).aEntity("yo"))
+        assertNull(documento(id = "otro-id").aEntity("yo"))                         // id del campo != id del documento
+    }
+
+    @Test
+    fun borradorAEntityNuevaQuedaPendienteDeCrearYConDuenio() {
         val borrador = BorradorRecordatorio("Llamar al banco", null, DatosSimulados.trabajo, Prioridad.Alta)
-        val entity = borrador.aEntityNueva(id = "uuid", ahora = 1_234)
+        val entity = borrador.aEntityNueva(id = "uuid", uidPropietario = "yo", ahora = 1_234)
         assertEquals("uuid", entity.id)
+        assertEquals("yo", entity.uidPropietario)
         assertEquals(EstadoSync.PENDIENTE_CREAR, entity.estadoSync)
         assertEquals(1_234, entity.fechaCreacion)
         assertEquals(1_234, entity.fechaActualizacion)
@@ -88,6 +104,7 @@ class MapeosTest {
         val editado = original.conCambios(borrador, ahora = 1_000) // mismo reloj: la versión igual avanza
 
         assertEquals("a", editado.id)
+        assertEquals(original.uidPropietario, editado.uidPropietario)
         assertEquals(original.fechaCreacion, editado.fechaCreacion)
         assertEquals(1_001, editado.fechaActualizacion)
         assertEquals(EstadoSync.PENDIENTE_ACTUALIZAR, editado.estadoSync)

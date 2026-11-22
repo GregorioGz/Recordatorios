@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
@@ -34,7 +36,9 @@ fun CampoDeTexto(
     singleLine: Boolean = true,
     minLines: Int = 1,
     maxCaracteres: Int? = null,
-    ayuda: String? = null
+    ayuda: String? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
 ) {
     OutlinedTextField(
         value = valor,
@@ -44,6 +48,8 @@ fun CampoDeTexto(
         enabled = enabled,
         singleLine = singleLine,
         minLines = minLines,
+        visualTransformation = visualTransformation,
+        keyboardOptions = keyboardOptions,
         supportingText = {
             Row(Modifier.fillMaxWidth()) {
                 Text(

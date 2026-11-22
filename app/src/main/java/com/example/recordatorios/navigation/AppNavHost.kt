@@ -1,6 +1,16 @@
 package com.example.recordatorios.navigation
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.recordatorios.ui.acceso.AccesoRoute
+import com.example.recordatorios.ui.components.IndicadorDeCarga
+import com.example.recordatorios.ui.sesion.DestinoSesion
+import com.example.recordatorios.ui.sesion.SesionViewModel
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
@@ -29,12 +39,31 @@ object Rutas {
 }
 
 /**
- * Grafo de navegación. El NavController vive acá (nivel superior de la app):
+ * Navegación según la sesión: Verificando -> carga; SinSesion o Invalida -> acceso;
+ * Activa -> grafo principal. Reabrir la app con una sesión guardada entra directo al listado.
+ * El NavController vive acá (nivel superior de la app):
  * las pantallas y componentes NO lo reciben, solo exponen lambdas.
  * No hace falta avisarle al listado que recargue: observa Room y se actualiza solo.
  */
 @Composable
 fun AppNavHost(
+    modifier: Modifier = Modifier,
+    sesionViewModel: SesionViewModel = viewModel(factory = SesionViewModel.Factory)
+) {
+    val destino by sesionViewModel.destino.collectAsStateWithLifecycle()
+    when (val actual = destino) {
+        DestinoSesion.Verificando -> Surface(modifier.fillMaxSize()) {
+            IndicadorDeCarga(mensaje = "Verificando la sesión")
+        }
+        DestinoSesion.Acceso -> AccesoRoute()
+        // key(uid): cada cuenta arranca con un grafo (y ViewModels) nuevos; nada queda de la anterior
+        is DestinoSesion.App -> key(actual.uid) { GrafoPrincipal(modifier = modifier) }
+    }
+}
+
+/** Grafo de la app con sesión activa. */
+@Composable
+private fun GrafoPrincipal(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController()
 ) {

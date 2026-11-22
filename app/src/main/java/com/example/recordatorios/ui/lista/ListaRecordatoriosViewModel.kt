@@ -6,13 +6,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.recordatorios.AppContainer
+import com.example.recordatorios.BuildConfig
 import com.example.recordatorios.data.RecordatoriosRepository
 import com.example.recordatorios.data.SimuladorDeEscenarios
 import com.example.recordatorios.data.preferencias.FiltroPrioridad
 import com.example.recordatorios.data.preferencias.Orden
 import com.example.recordatorios.data.preferencias.PreferenciasRepository
 import com.example.recordatorios.data.preferencias.PreferenciasUsuario
-import com.example.recordatorios.data.remote.EscenarioRemoto
 import com.example.recordatorios.model.EstadoRecordatorio
 import com.example.recordatorios.model.Prioridad
 import com.example.recordatorios.model.Recordatorio
@@ -45,7 +45,7 @@ class ListaRecordatoriosViewModel(
     private val _uiState = MutableStateFlow<ListaRecordatoriosUiState>(ListaRecordatoriosUiState.Cargando)
     val uiState: StateFlow<ListaRecordatoriosUiState> = _uiState.asStateFlow()
 
-    private val _sincronizacion = MutableStateFlow(SincronizacionUiState())
+    private val _sincronizacion = MutableStateFlow(SincronizacionUiState(herramientasDePrueba = BuildConfig.HERRAMIENTAS_DE_PRUEBA))
     val sincronizacion: StateFlow<SincronizacionUiState> = _sincronizacion.asStateFlow()
 
     /** Cada incremento vuelve a suscribirse a Room (botón Reintentar). */
@@ -68,10 +68,8 @@ class ListaRecordatoriosViewModel(
                 .collect { nuevoEstado -> _uiState.value = nuevoEstado }
         }
         viewModelScope.launch {
-            combine(repositorio.estadoSincronizacion, simulador.escenarioRemoto) { estado, escenario ->
-                estado to escenario?.aSimulacion()
-            }.collect { (estado, escenario) ->
-                _sincronizacion.update { it.copy(estado = estado, escenarioServidorActivo = escenario) }
+            repositorio.estadoSincronizacion.collect { estado ->
+                _sincronizacion.update { it.copy(estado = estado) }
             }
         }
     }
@@ -96,27 +94,45 @@ class ListaRecordatoriosViewModel(
                 simulador.simularErrorEnProximoGuardado()
                 mostrar("El próximo guardado (crear o editar) fallará una vez.")
             }
-            Simulacion.RESTAURAR -> viewModelScope.launch {
-                simulador.restaurarDatosDeEjemplo()
-                mostrar("Simulaciones locales desactivadas y ejemplos restaurados.")
+            Simulacion.CARGAR_EJEMPLOS -> viewModelScope.launch {
+                val agregados = simulador.cargarDatosDeEjemplo()
+                mostrar("Simulaciones desactivadas. Ejemplos agregados a tu cuenta: $agregados.")
             }
             Simulacion.TEMA_INVALIDO -> viewModelScope.launch {
                 preferenciasRepository.guardarTemaInvalidoParaPruebas()
                 mostrar("Se guardó un tema inválido: la app usa el predeterminado (según el sistema).")
             }
             Simulacion.SINCRONIZACION_CONCURRENTE -> viewModelScope.launch {
-                mostrar(simulador.probarSincronizacionConcurrente(cantidad = 3))
+                val resumen = simulador.probarSincronizacionConcurrente(cantidad = 3)
+                _sincronizacion.update { it.copy(resultadoPrueba = resumen) }
             }
-            else -> {
-                val escenario = simulacion.aEscenarioRemoto() ?: return
-                if (simulador.cambiarEscenarioRemoto(escenario)) {
-                    mostrar("${simulacion.etiqueta}. Creá, editá o sincronizá para probarlo.")
-                } else {
-                    mostrar("Hay una URL real configurada: el servidor simulado no está activo.")
-                }
-            }
+            Simulacion.LEER_OTRA_CUENTA, Simulacion.ESCRIBIR_OTRA_CUENTA ->
+                _sincronizacion.update { it.copy(pruebaOtraCuenta = PruebaOtraCuentaUiState(operacion = simulacion)) }
         }
     }
+
+    // ---------- Prueba de acceso a otra cuenta (autorización) ----------
+    fun onUidOtraCuentaCambiado(uid: String) = _sincronizacion.update {
+        it.copy(pruebaOtraCuenta = it.pruebaOtraCuenta?.copy(uid = uid))
+    }
+
+    fun onCancelarPruebaOtraCuenta() = _sincronizacion.update { it.copy(pruebaOtraCuenta = null) }
+
+    fun onEjecutarPruebaOtraCuenta() {
+        val prueba = _sincronizacion.value.pruebaOtraCuenta ?: return
+        if (prueba.ejecutando) return
+        _sincronizacion.update { it.copy(pruebaOtraCuenta = prueba.copy(ejecutando = true)) }
+        viewModelScope.launch {
+            val resultado = if (prueba.operacion == Simulacion.ESCRIBIR_OTRA_CUENTA) {
+                simulador.intentarEscribirEnOtraCuenta(prueba.uid)
+            } else {
+                simulador.intentarLeerOtraCuenta(prueba.uid)
+            }
+            _sincronizacion.update { it.copy(pruebaOtraCuenta = null, resultadoPrueba = resultado) }
+        }
+    }
+
+    fun onResultadoPruebaCerrado() = _sincronizacion.update { it.copy(resultadoPrueba = null) }
 
     private fun mostrar(mensaje: String) = _sincronizacion.update { it.copy(mensaje = mensaje) }
 
@@ -131,23 +147,6 @@ class ListaRecordatoriosViewModel(
             }
         }
     }
-}
-
-private fun Simulacion.aEscenarioRemoto(): EscenarioRemoto? = when (this) {
-    Simulacion.SERVIDOR_NORMAL -> EscenarioRemoto.NORMAL
-    Simulacion.SERVIDOR_ERROR_500 -> EscenarioRemoto.ERROR_SERVIDOR
-    Simulacion.SERVIDOR_ERROR_400 -> EscenarioRemoto.SOLICITUD_INVALIDA
-    Simulacion.SERVIDOR_TIMEOUT -> EscenarioRemoto.TIMEOUT
-    Simulacion.SERVIDOR_SIN_CONEXION -> EscenarioRemoto.SIN_CONEXION
-    else -> null
-}
-
-private fun EscenarioRemoto.aSimulacion(): Simulacion = when (this) {
-    EscenarioRemoto.NORMAL -> Simulacion.SERVIDOR_NORMAL
-    EscenarioRemoto.ERROR_SERVIDOR -> Simulacion.SERVIDOR_ERROR_500
-    EscenarioRemoto.SOLICITUD_INVALIDA -> Simulacion.SERVIDOR_ERROR_400
-    EscenarioRemoto.TIMEOUT -> Simulacion.SERVIDOR_TIMEOUT
-    EscenarioRemoto.SIN_CONEXION -> Simulacion.SERVIDOR_SIN_CONEXION
 }
 
 private fun FiltroPrioridad.aPrioridad(): Prioridad? = when (this) {

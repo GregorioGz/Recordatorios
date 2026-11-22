@@ -53,7 +53,11 @@ fun AjustesRoute(
         onMostrarCompletadosCambiado = viewModel::onMostrarCompletadosCambiado,
         onOrdenSeleccionado = viewModel::onOrdenSeleccionado,
         onFiltroSeleccionado = viewModel::onFiltroSeleccionado,
-        onErrorDescartado = viewModel::onErrorDescartado
+        onErrorDescartado = viewModel::onErrorDescartado,
+        onCerrarSesion = viewModel::onCerrarSesion,
+        onSincronizarYSalir = { viewModel.onSincronizarYSalir() },
+        onSalirIgual = { viewModel.onSalirIgual() },
+        onCancelarCierre = viewModel::onCancelarCierre
     )
 }
 
@@ -67,8 +71,21 @@ fun AjustesScreen(
     onOrdenSeleccionado: (Orden) -> Unit,
     onFiltroSeleccionado: (FiltroPrioridad) -> Unit,
     onErrorDescartado: () -> Unit,
+    onCerrarSesion: () -> Unit,
+    onSincronizarYSalir: () -> Unit,
+    onSalirIgual: () -> Unit,
+    onCancelarCierre: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    (uiState.cierreSesion as? CierreSesionUiState.Confirmando)?.let { confirmando ->
+        DialogoCierreSesion(
+            pendientes = confirmando.pendientes,
+            onSincronizarYSalir = onSincronizarYSalir,
+            onSalirIgual = onSalirIgual,
+            onCancelar = onCancelarCierre
+        )
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.mensajeError) {
         uiState.mensajeError?.let {
@@ -107,6 +124,13 @@ fun AjustesScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            SeccionCuenta(
+                cuenta = uiState.cuenta,
+                uid = uiState.uidVisible,
+                cerrando = uiState.cierreSesion == CierreSesionUiState.Cerrando,
+                onCerrarSesion = onCerrarSesion
+            )
+            HorizontalDivider()
             SelectorDeOpciones(
                 titulo = "Tema",
                 opciones = Tema.entries,
@@ -141,7 +165,8 @@ fun AjustesScreen(
                 mensajeError = null
             )
             Text(
-                text = "Los ajustes se guardan en el dispositivo y se conservan al cerrar la aplicación.",
+                text = "Los ajustes se guardan en el dispositivo y se conservan al cerrar la aplicación " +
+                    "o la sesión: pertenecen al dispositivo, no a la cuenta.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -181,9 +206,10 @@ private fun FilaInterruptor(
 private fun AjustesPreview() {
     RecordatoriosTheme {
         AjustesScreen(
-            uiState = AjustesUiState(cargando = false),
+            uiState = AjustesUiState(cargando = false, cuenta = "ana@ejemplo.com"),
             onVolver = {}, onTemaSeleccionado = {}, onMostrarCompletadosCambiado = {},
-            onOrdenSeleccionado = {}, onFiltroSeleccionado = {}, onErrorDescartado = {}
+            onOrdenSeleccionado = {}, onFiltroSeleccionado = {}, onErrorDescartado = {},
+            onCerrarSesion = {}, onSincronizarYSalir = {}, onSalirIgual = {}, onCancelarCierre = {}
         )
     }
 }

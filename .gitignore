@@ -13,3 +13,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Firma release y configuración local de Firebase (no se versionan)
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+.kotlin/

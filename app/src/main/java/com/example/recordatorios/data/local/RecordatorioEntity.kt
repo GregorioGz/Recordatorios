@@ -1,5 +1,6 @@
 package com.example.recordatorios.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -9,16 +10,20 @@ import com.example.recordatorios.model.EstadoSync
 /**
  * Esquema de Room (tabla "recordatorios"). Es un modelo SOLO de la capa de datos:
  * nunca llega a las funciones componibles.
- *  - id: UUID generado en el dispositivo -> estable entre Room y el servidor.
+ *  - id: UUID generado en el dispositivo -> el mismo id del documento en Firestore.
+ *  - uidPropietario: uid de la cuenta dueña del registro. Todas las consultas filtran
+ *    por él (defensa adicional: una cuenta nunca lee filas de otra).
  *  - prioridad / estado: se guardan como String usando la `clave` del dominio.
  *  - estadoSync: enum convertido explícitamente con [ConvertidoresRoom].
  */
 @Entity(
     tableName = "recordatorios",
-    indices = [Index("estadoSync"), Index("prioridad")]
+    indices = [Index("estadoSync"), Index("prioridad"), Index("uidPropietario")]
 )
 data class RecordatorioEntity(
     @PrimaryKey val id: String,
+    // DEFAULT '' coincide con la columna que agrega la migración 1 -> 2
+    @ColumnInfo(defaultValue = "''") val uidPropietario: String,
     val titulo: String,
     val descripcion: String?,
     val categoriaId: Int,

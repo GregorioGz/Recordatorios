@@ -3,7 +3,7 @@ package com.example.recordatorios.model
 /**
  * Modelo de DOMINIO (evoluciona el de las actividades anteriores).
  * Es el único modelo que conocen los ViewModel y las pantallas: no depende
- * de Room (Entity) ni de Retrofit (DTO).
+ * de Room (Entity) ni de Firebase (documentos, usuarios ni excepciones).
  * Todas las clases son inmutables (solo `val`): para "cambiar" un
  * recordatorio se crea una copia con copy().
  */
